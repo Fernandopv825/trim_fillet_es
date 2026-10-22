@@ -1,0 +1,7 @@
+{
+  "id": "cad_trim_fillet",
+  "name": "CAD Trim & Fillet",
+  "version": "1.0.0",
+  "author": "Aymen Alhaddad (Architect & Developer)",
+  "description": "Professional 2D/3D CAD Trim, Fillet (Arc Corner), and Chamfer (Bevel) tools for IngeTrazo."
+}
