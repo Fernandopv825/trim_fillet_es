@@ -1,59 +1,64 @@
-# CAD Trim & Fillet para IngeTrazo
+# CAD Trim & Fillet for IngeTrazo
 
-[![Extensión de IngeTrazo](https://img.shields.io/badge/IngeTrazo-Extension-blue.svg)](https://ingetrazo.com/extensiones)
-[![Licencia: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Versión](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
+[![IngeTrazo Extension](https://img.shields.io/badge/IngeTrazo-Extension-blue.svg)](https://ingetrazo.com/extensiones)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
 
-Suite profesional de CAD 2D/3D para recorte, empalme de esquinas y chaflán para **IngeTrazo** (el software CAD BIM de código abierto).
+Professional 2D/3D CAD Trimming, Corner Fillet & Chamfer suite for **IngeTrazo** (the open-source BIM CAD software).
 
-Desarrollado por **Aymen Alhaddad (Architect & Developer)**.
+Developed by **Aymen Alhaddad (Architect & Developer)**.
 
-Traducción al español: **Fernando Felix**.
-
----
-
-## Características
-
-### 1. Recorte rápido
-- Haz clic en cualquier segmento de línea para borrarlo entre las intersecciones más cercanas que lo delimitan.
-- La vista previa al pasar el cursor brilla en rojo intenso, con marcas de eliminación en forma de "X".
-- Limpia automáticamente los vértices huérfanos y repara la topología de las caras.
-
-### 2. Recorte por límite
-- Selecciona primero una línea de corte como límite y luego haz clic en las líneas que la cruzan para recortar el lado donde hiciste clic.
-
-### 3. Arco de empalme tangente
-- Crea arcos circulares tangentes y suaves que redondean las esquinas entre dos líneas.
-- **Compatibilidad con el cuadro de medidas (VCB)**: escribe el radio directamente en cualquier momento (por ejemplo `0.5`, `1.2`) y pulsa `Enter`.
-- **Esquina viva ($R=0$)**: si el radio es `0`, las aristas se extienden o se recortan hasta formar un vértice en esquina viva.
-- **Reparación de caras B-Rep**: actualiza automáticamente los polígonos de las superficies incidentes y elimina la cuña exterior que queda fuera del arco.
-- Vista previa del arco circular en tiempo real en la vista mientras mueves el cursor.
-
-### 4. Chaflán
-- Conexiones rectas biseladas en las esquinas, con distancias personalizables ($D_1$, $D_2$).
-- Compatibilidad completa con la entrada de distancia en el VCB y recorte automático de caras.
-
-### 5. Cuadro de diálogo de configuración
-- Ventana de configuración para ajustar el radio de empalme predeterminado, la resolución de segmentos del arco (suavidad) y las distancias del chaflán.
-
-### 6. Arquitectura profesional y deshacer/rehacer
-- Integración completa de deshacer/rehacer transaccional con `SnapshotImport` de IngeTrazo (`Ctrl+Z` / `Ctrl+Y`).
-- Íconos vectoriales de alta resolución que se adaptan al tema (compatibles con los temas claro y oscuro de la interfaz).
-- Accesos directos en el menú contextual de la vista, con clic derecho.
+🌐 Disponible también en español: [README.es.md](README.es.md)
 
 ---
 
-## Instalación
+## Features
 
-1. Descarga la última versión `cad_trim_fillet_v1.0.0.zip` desde [Releases](https://github.com/aymenart/cad_trim_fillet/releases).
-2. Extrae la carpeta `cad_trim_fillet` en el directorio de plugins de IngeTrazo:
+### 1. Quick Trim
+- Click any line segment to erase it between its nearest bounding intersections.
+- Real-time hover preview glows in bright red with 'X' deletion markers.
+- Cleans up orphan vertices and heals face topology automatically.
+
+### 2. Boundary Trim
+- Select a cutting boundary line first, then click intersecting lines to trim away the clicked side.
+
+### 3. Tangent Fillet Arc
+- Create smooth tangent circular arcs rounding corners between two lines.
+- **Measurements Box (VCB) Support**: Type radius directly at any time (e.g. `0.5`, `1.2`) and press `Enter`.
+- **Sharp Corner ($R=0$)**: Setting radius to `0` extends or trims edges to a sharp vertex.
+- **B-Rep Face Healer**: Automatically updates incident surface polygons, deleting the outer wedge outside the arc.
+- Real-time rubber-band circular arc preview in the viewport.
+
+### 4. Chamfer Bevel
+- Straight-line corner beveled connections with customizable distances ($D_1$, $D_2$).
+- Full VCB distance entry support and automatic face trimming.
+
+### 5. Settings Dialog
+- Dedicated settings modal to adjust default fillet radius, arc segment resolution (smoothness), and chamfer distances.
+
+### 6. Professional Architecture & Undo/Redo
+- Full transactional undo/redo integration with IngeTrazo's `SnapshotImport` (`Ctrl+Z` / `Ctrl+Y`).
+- Theme-adaptive high-DPI vector icons (supports both Dark and Light UI themes).
+- Viewport context menu shortcuts on right-click.
+
+### 7. Multi-language Interface (English / Spanish)
+- The interface language is selected automatically (Spanish if IngeTrazo or the system uses Spanish, English otherwise).
+- To force a language, set `FORCE_LANGUAGE = "en"` or `FORCE_LANGUAGE = "es"` near the top of `__init__.py`.
+- To add another language, copy the `"en"` block inside `_TEXTS` and translate it.
+
+---
+
+## Installation
+
+1. Download the latest `cad_trim_fillet_v1.0.0.zip` from [Releases](https://github.com/aymenart/cad_trim_fillet/releases).
+2. Extract the folder `cad_trim_fillet` into your IngeTrazo plugins directory:
    - **Windows**: `%APPDATA%\IngeTrazo\plugins\`  
-     (`C:\Users\<TuUsuario>\AppData\Roaming\IngeTrazo\plugins\`)
+     (`C:\Users\<YourUser>\AppData\Roaming\IngeTrazo\plugins\`)
    - **Linux / Flatpak / AppImage**: `~/.config/IngeTrazo/plugins/`
-3. Reinicia IngeTrazo. La barra de herramientas **CAD Trim & Fillet** aparecerá en la parte superior, junto con las entradas del menú en **Extensiones > CAD Trim & Fillet**.
+3. Restart IngeTrazo. The **CAD Trim & Fillet** toolbar will appear at the top, along with menu entries under **Extensions > CAD Trim & Fillet**.
 
 ---
 
-## Licencia
+## License
 
-Este proyecto está licenciado bajo la Licencia Pública General de GNU v3.0 o posterior (GPL-3.0-or-later).
+This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
