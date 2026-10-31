@@ -5,21 +5,22 @@
 # Developed by: Aymen Alhaddad (Architect & Developer)
 # Copyright (c) 2026 Aymen Alhaddad. All rights reserved.
 # =============================================================================
-"""CAD Trim & Fillet — Recorte, empalme de esquinas y chaflán avanzados para CAD en IngeTrazo.
+"""CAD Trim & Fillet — Advanced CAD Trimming, Corner Fillet & Chamfer for IngeTrazo.
 
-Características:
-- Recorte rápido: haz clic en cualquier segmento de línea para borrarlo entre sus intersecciones más cercanas.
-- Recorte por límite: selecciona una línea de corte como límite y luego haz clic en las líneas que la cruzan para recortarlas.
-- Arco de empalme: crea arcos circulares tangentes y suaves que redondean las esquinas entre dos líneas.
-  * Permite escribir el radio en tiempo real en el cuadro de medidas (VCB).
-  * Un empalme con R = 0 extiende o recorta hasta formar una esquina viva.
-  * Vista previa del arco circular en tiempo real mientras mueves el cursor.
-- Chaflán: conexiones rectas biseladas en las esquinas, con distancias personalizables.
-- Herramientas interactivas en la vista:
-  * Vista previa al pasar el cursor (los tramos que se borrarán brillan en rojo).
-  * Íconos vectoriales de alta resolución que se adaptan al tema claro u oscuro.
-  * Cuadro de diálogo de configuración para el radio, los segmentos y las distancias.
-  * Integración completa de deshacer/rehacer transaccional con IngeTrazo.
+Features:
+- Quick Trim: Click any line segment to erase it between its nearest intersections.
+- Boundary Trim: Select a cutting boundary line, then click incoming lines to trim.
+- Fillet Arc: Create smooth tangent circular arcs rounding corners between two lines.
+  * Supports real-time radius typing in the Measurements box (VCB).
+  * Fillet with R = 0 extends or trims to a sharp corner vertex.
+  * Real-time rubber-band circular arc preview.
+- Chamfer Bevel: Straight-line corner beveled connections with customizable distances.
+- Interactive Viewport Tools:
+  * Real-time hover preview (spans to be deleted glow in bright red).
+  * High-DPI vector icons with automatic dark/light theme adaptation.
+  * Dedicated settings dialog for radius, segments, and distances.
+  * Full transactional undo/redo integration with IngeTrazo.
+  * Multi-language interface (English / Spanish), selected automatically.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ import copy
 import math
 from typing import List, Tuple, Optional, Any, Dict
 
-from PySide6.QtCore import Qt, QPointF, QSize, QTimer
+from PySide6.QtCore import Qt, QPointF, QSize, QTimer, QLocale
 from PySide6.QtGui import (
     QVector3D,
     QColor,
@@ -79,6 +80,220 @@ _ACTIVE_TOOL = None
 
 
 # =============================================================================
+# 0. MULTI-LANGUAGE SUPPORT (ENGLISH / SPANISH)
+# =============================================================================
+# The interface language is chosen automatically: if IngeTrazo (or the system)
+# uses Spanish, the interface is shown in Spanish; otherwise in English.
+# To force a language, set FORCE_LANGUAGE = "en" or FORCE_LANGUAGE = "es".
+# To add another language, copy the "en" block inside _TEXTS and translate it.
+
+FORCE_LANGUAGE = None  # None = automatic, "en" = English, "es" = Spanish
+
+_TEXTS: Dict[str, Dict[str, str]] = {
+    "en": {
+        # --- geometry / operation messages
+        "err_zero_vector": "Invalid line: zero length vector.",
+        "err_collinear": "collinear",
+        "err_parallel": "Lines are parallel.",
+        "err_nearly_parallel": "Lines are nearly parallel.",
+        "err_non_coplanar": "Non-coplanar (skew: {skew:.1f}mm).",
+        "ok_intersection": "Intersection found.",
+        "err_zero_length": "One of the lines has zero length.",
+        "err_collinear_or_parallel": "Lines are collinear or nearly parallel.",
+        "msg_sharp_corner": "Sharp corner",
+        "msg_fillet_calc": "Fillet calculated.",
+        "msg_chamfer_calc": "Chamfer calculated.",
+        "msg_trim_free_line": "Trimmed entire free line segment.",
+        "msg_trim_between": "Trimmed line segment between intersections.",
+        "err_target_zero": "Target line has zero length.",
+        "err_target_no_hit": "Target line does not intersect the boundary cutter.",
+        "msg_boundary_trimmed": "Trimmed line against boundary cutter.",
+        "msg_extended_sharp": "Extended/trimmed to sharp corner (R=0).",
+        "msg_fillet_created": "Fillet created (R={r:.3f}m, {segs} segments).",
+        "msg_chamfer_created": "Chamfer created (D1={d1:.3f}m, D2={d2:.3f}m).",
+        "msg_trimmed": "Trimmed.",
+        "msg_completed": "Completed.",
+        # --- status bar messages (tools)
+        "trim_start_boundary": "Boundary Trim: Click the CUTTER line first. (Esc = cancel)",
+        "trim_start_quick": "Quick Trim: Click any line segment to erase it between intersections. (Esc = cancel)",
+        "trim_cancelled": "Trim cancelled.",
+        "trim_cutter_selected": "Cutter selected! Now click crossing lines on the side to trim away.",
+        "status_next_line": "{msg} (Click next line or Esc to exit)",
+        "status_next_segment": "{msg} (Ready for next segment, or Esc to exit)",
+        "status_next_line1": "{msg} (Click next Line 1, or Esc to exit)",
+        "radius_value": "{v:.3f}m",
+        "radius_sharp": "0 (Sharp Corner)",
+        "fillet_start": "CAD Fillet [R = {r}]: Click Line 1. (Type radius + Enter to change)",
+        "fillet_cancelled": "Fillet cancelled.",
+        "radius_negative": "Radius cannot be negative.",
+        "radius_updated": "Fillet Radius updated to {r}",
+        "fillet_line1_selected": "Line 1 selected! Now click Line 2 to create fillet (R={r:.3f}m).",
+        "chamfer_start": "CAD Chamfer [D = {d:.3f}m]: Click Line 1. (Type distance + Enter, Esc = exit)",
+        "chamfer_cancelled": "Chamfer cancelled.",
+        "distance_positive": "Distance must be greater than zero.",
+        "distance_updated": "Chamfer Distance set to {d:.3f}m",
+        "chamfer_line1_selected": "Line 1 selected! Now click Line 2 to chamfer (D={d:.3f}m).",
+        "vcb_radius": "Radius",
+        "vcb_distance": "Distance",
+        # --- settings dialog
+        "dlg_title": "CAD Trim & Fillet — Settings",
+        "dlg_fillet_group": "Fillet Settings",
+        "dlg_default_radius": "Default Radius (m):",
+        "dlg_arc_segments": "Arc Segments:",
+        "dlg_chamfer_group": "Chamfer Settings",
+        "dlg_distance1": "Distance 1 (m):",
+        "dlg_distance2": "Distance 2 (m):",
+        "dlg_save": "Save Settings",
+        "dlg_cancel": "Cancel",
+        "settings_updated": "CAD Trim & Fillet settings updated.",
+        # --- toolbar / menus
+        "tool_label_prefix": "Tool: {name}",
+        "tool_label_trim_quick": "CAD Trim (Quick)",
+        "tool_label_trim_boundary": "CAD Trim (Boundary)",
+        "tool_label_fillet": "CAD Fillet",
+        "tool_label_chamfer": "CAD Chamfer",
+        "act_quick_title": "Quick Trim",
+        "act_quick_tip": "Click any line segment to erase it between bounding intersections.",
+        "act_boundary_title": "Boundary Trim",
+        "act_boundary_tip": "Click cutting boundary first, then click lines to trim.",
+        "act_fillet_title": "Fillet Arc",
+        "act_fillet_tip": "Create smooth tangent circular arc rounding corner (supports typing radius in VCB).",
+        "act_chamfer_title": "Chamfer Bevel",
+        "act_chamfer_tip": "Create straight beveled corner between two lines (supports typing distance in VCB).",
+        "act_settings_title": "Settings...",
+        "act_settings_tip": "Configure Fillet Radius, Arc Segments, and Chamfer Distances.",
+        "author_line": "Author: {a}",
+        "translator_line": "Spanish translation: {t}",
+    },
+    "es": {
+        # --- geometry / operation messages
+        "err_zero_vector": "Línea no válida: vector de longitud cero.",
+        "err_collinear": "Las líneas son colineales.",
+        "err_parallel": "Las líneas son paralelas.",
+        "err_nearly_parallel": "Las líneas son casi paralelas.",
+        "err_non_coplanar": "No coplanares (desviación: {skew:.1f} mm).",
+        "ok_intersection": "Intersección encontrada.",
+        "err_zero_length": "Una de las líneas tiene longitud cero.",
+        "err_collinear_or_parallel": "Las líneas son colineales o casi paralelas.",
+        "msg_sharp_corner": "Esquina viva",
+        "msg_fillet_calc": "Empalme calculado.",
+        "msg_chamfer_calc": "Chaflán calculado.",
+        "msg_trim_free_line": "Se recortó todo el segmento de línea libre.",
+        "msg_trim_between": "Segmento de línea recortado entre intersecciones.",
+        "err_target_zero": "La línea de destino tiene longitud cero.",
+        "err_target_no_hit": "La línea de destino no corta con el límite de corte.",
+        "msg_boundary_trimmed": "Línea recortada contra el límite de corte.",
+        "msg_extended_sharp": "Extendida/recortada hasta esquina viva (R=0).",
+        "msg_fillet_created": "Empalme creado (R={r:.3f} m, {segs} segmentos).",
+        "msg_chamfer_created": "Chaflán creado (D1={d1:.3f} m, D2={d2:.3f} m).",
+        "msg_trimmed": "Recortado.",
+        "msg_completed": "Completado.",
+        # --- status bar messages (tools)
+        "trim_start_boundary": "Recorte por límite: haz clic primero en la línea de CORTE. (Esc = cancelar)",
+        "trim_start_quick": "Recorte rápido: haz clic en cualquier segmento de línea para borrarlo entre intersecciones. (Esc = cancelar)",
+        "trim_cancelled": "Recorte cancelado.",
+        "trim_cutter_selected": "¡Línea de corte seleccionada! Ahora haz clic en las líneas que la cruzan, en el lado que quieres recortar.",
+        "status_next_line": "{msg} (Haz clic en la siguiente línea o Esc para salir)",
+        "status_next_segment": "{msg} (Listo para el siguiente segmento, o Esc para salir)",
+        "status_next_line1": "{msg} (Haz clic en la siguiente línea 1, o Esc para salir)",
+        "radius_value": "{v:.3f} m",
+        "radius_sharp": "0 (esquina viva)",
+        "fillet_start": "CAD Empalme [R = {r}]: haz clic en la línea 1. (Escribe el radio + Enter para cambiarlo)",
+        "fillet_cancelled": "Empalme cancelado.",
+        "radius_negative": "El radio no puede ser negativo.",
+        "radius_updated": "Radio de empalme actualizado a {r}",
+        "fillet_line1_selected": "¡Línea 1 seleccionada! Ahora haz clic en la línea 2 para crear el empalme (R={r:.3f} m).",
+        "chamfer_start": "CAD Chaflán [D = {d:.3f} m]: haz clic en la línea 1. (Escribe la distancia + Enter, Esc = salir)",
+        "chamfer_cancelled": "Chaflán cancelado.",
+        "distance_positive": "La distancia debe ser mayor que cero.",
+        "distance_updated": "Distancia de chaflán establecida en {d:.3f} m",
+        "chamfer_line1_selected": "¡Línea 1 seleccionada! Ahora haz clic en la línea 2 para aplicar el chaflán (D={d:.3f} m).",
+        "vcb_radius": "Radio",
+        "vcb_distance": "Distancia",
+        # --- settings dialog
+        "dlg_title": "CAD Trim & Fillet — Configuración",
+        "dlg_fillet_group": "Configuración de empalme",
+        "dlg_default_radius": "Radio predeterminado (m):",
+        "dlg_arc_segments": "Segmentos del arco:",
+        "dlg_chamfer_group": "Configuración de chaflán",
+        "dlg_distance1": "Distancia 1 (m):",
+        "dlg_distance2": "Distancia 2 (m):",
+        "dlg_save": "Guardar configuración",
+        "dlg_cancel": "Cancelar",
+        "settings_updated": "Configuración de CAD Trim & Fillet actualizada.",
+        # --- toolbar / menus
+        "tool_label_prefix": "Herramienta: {name}",
+        "tool_label_trim_quick": "CAD Recorte rápido",
+        "tool_label_trim_boundary": "CAD Recorte por límite",
+        "tool_label_fillet": "CAD Empalme",
+        "tool_label_chamfer": "CAD Chaflán",
+        "act_quick_title": "Recorte rápido",
+        "act_quick_tip": "Haz clic en cualquier segmento de línea para borrarlo entre las intersecciones que lo delimitan.",
+        "act_boundary_title": "Recorte por límite",
+        "act_boundary_tip": "Haz clic primero en el límite de corte y luego en las líneas que quieres recortar.",
+        "act_fillet_title": "Arco de empalme",
+        "act_fillet_tip": "Crea un arco circular tangente que redondea la esquina (permite escribir el radio en el cuadro de medidas).",
+        "act_chamfer_title": "Chaflán",
+        "act_chamfer_tip": "Crea un chaflán recto entre dos líneas (permite escribir la distancia en el cuadro de medidas).",
+        "act_settings_title": "Configuración...",
+        "act_settings_tip": "Configura el radio de empalme, los segmentos del arco y las distancias del chaflán.",
+        "author_line": "Autor: {a}",
+        "translator_line": "Traducción al español: {t}",
+    },
+}
+
+
+def current_language() -> str:
+    """Return "es" or "en" depending on FORCE_LANGUAGE, IngeTrazo or the system."""
+    if FORCE_LANGUAGE in ("en", "es"):
+        return FORCE_LANGUAGE
+
+    candidates: List[str] = []
+    app = _GLOBAL_APP
+    if app is not None:
+        for attr in ("language", "lang", "locale"):
+            val = getattr(app, attr, None)
+            if isinstance(val, str):
+                candidates.append(val)
+    try:
+        name = QLocale().name()
+        if isinstance(name, str):
+            candidates.append(name)
+    except Exception:
+        pass
+
+    for code in candidates:
+        code = code.strip().lower()
+        if code.startswith("es"):
+            return "es"
+        if code.startswith("en"):
+            return "en"
+    return "en"
+
+
+def tr(key: str, **kwargs: Any) -> str:
+    """Translate a text key into the active language (falls back to English)."""
+    texts = _TEXTS.get(current_language(), _TEXTS["en"])
+    text = texts.get(key)
+    if text is None:
+        text = _TEXTS["en"].get(key, key)
+    if kwargs:
+        try:
+            return text.format(**kwargs)
+        except Exception:
+            return text
+    return text
+
+
+def _credits_html() -> str:
+    """Author (and Spanish translator) lines for button tooltips."""
+    html = "<br><i>" + tr("author_line", a=AUTHOR) + "</i>"
+    if current_language() == "es":
+        html += "<br><i>" + tr("translator_line", t=TRANSLATOR) + "</i>"
+    return html
+
+
+# =============================================================================
 # 1. 3D VECTOR & CAD GEOMETRIC ENGINE
 # =============================================================================
 
@@ -121,7 +336,7 @@ def intersect_lines_3d_detailed(
     v1_len = v1.length()
     v2_len = v2.length()
     if v1_len < 1e-7 or v2_len < 1e-7:
-        return False, None, "Línea no válida: vector de longitud cero.", (0.0, 0.0)
+        return False, None, tr("err_zero_vector"), (0.0, 0.0)
 
     dir1 = v1 / v1_len
     dir2 = v2 / v2_len
@@ -133,8 +348,8 @@ def intersect_lines_3d_detailed(
     if cross_len < PARALLEL_EPSILON:
         collinear_dist = QVector3D.crossProduct(delta_p, dir1).length()
         if collinear_dist < 1e-3:
-            return True, None, "Las líneas son colineales.", (0.0, 0.0)
-        return False, None, "Las líneas son paralelas.", (0.0, 0.0)
+            return True, None, tr("err_collinear"), (0.0, 0.0)
+        return False, None, tr("err_parallel"), (0.0, 0.0)
 
     b = QVector3D.dotProduct(dir1, dir2)
     d = QVector3D.dotProduct(dir1, delta_p)
@@ -142,7 +357,7 @@ def intersect_lines_3d_detailed(
 
     denom = 1.0 - (b * b)
     if abs(denom) < 1e-7:
-        return False, None, "Las líneas son casi paralelas.", (0.0, 0.0)
+        return False, None, tr("err_nearly_parallel"), (0.0, 0.0)
 
     t = (d - b * e) / denom
     u = (b * d - e) / denom
@@ -152,10 +367,10 @@ def intersect_lines_3d_detailed(
 
     skew_dist = (pt2 - pt1).length()
     if skew_dist > coplanar_tol:
-        return False, None, f"No coplanares (desviación: {skew_dist*1000:.1f} mm).", (t, u)
+        return False, None, tr("err_non_coplanar", skew=skew_dist * 1000), (t, u)
 
     intersection_pt = (pt1 + pt2) * 0.5
-    return True, intersection_pt, "Intersección encontrada.", (t, u)
+    return True, intersection_pt, tr("ok_intersection"), (t, u)
 
 
 def intersect_segments_3d(
@@ -323,7 +538,7 @@ def compute_fillet_geometry(
     L1 = v1_full.length()
     L2 = v2_full.length()
     if L1 < 1e-6 or L2 < 1e-6:
-        return False, "Una de las líneas tiene longitud cero.", {}
+        return False, tr("err_zero_length"), {}
 
     d1 = v1_full / L1
     d2 = v2_full / L2
@@ -363,14 +578,14 @@ def compute_fillet_geometry(
     cos_theta = max(-1.0, min(1.0, float(QVector3D.dotProduct(u1, u2))))
     theta = math.acos(cos_theta)
     if theta < 0.02 or theta > math.pi - 0.02:
-        return False, "Las líneas son colineales o casi paralelas.", {}
+        return False, tr("err_collinear_or_parallel"), {}
 
     tan_half = math.tan(theta * 0.5)
     sin_half = math.sin(theta * 0.5)
 
     if radius < 1e-4:
         # Sharp corner (R = 0)
-        return True, "Esquina viva", {
+        return True, tr("msg_sharp_corner"), {
             "V": V, "T1": V, "T2": V, "C": V, "pA_far": pA_far, "pB_far": pB_far,
             "arc_points": [], "is_sharp": True, "radius": 0.0
         }
@@ -398,7 +613,7 @@ def compute_fillet_geometry(
         pt = C + rotate_vector_3d(r1, rot_axis, ang)
         arc_points.append(pt)
 
-    return True, "Empalme calculado.", {
+    return True, tr("msg_fillet_calc"), {
         "V": V, "T1": T1, "T2": T2, "C": C, "pA_far": pA_far, "pB_far": pB_far,
         "arc_points": arc_points, "is_sharp": False, "radius": radius,
         "d_tan": d_tan, "theta": theta
@@ -420,7 +635,7 @@ def compute_chamfer_geometry(
     L1 = v1_full.length()
     L2 = v2_full.length()
     if L1 < 1e-6 or L2 < 1e-6:
-        return False, "Una de las líneas tiene longitud cero.", {}
+        return False, tr("err_zero_length"), {}
 
     d1 = v1_full / L1
     d2 = v2_full / L2
@@ -456,7 +671,7 @@ def compute_chamfer_geometry(
     T1 = V + u1 * dist1
     T2 = V + u2 * dist2
 
-    return True, "Chaflán calculado.", {
+    return True, tr("msg_chamfer_calc"), {
         "V": V, "T1": T1, "T2": T2, "pA_far": pA_far, "pB_far": pB_far
     }
 
@@ -671,7 +886,7 @@ def op_quick_trim(mesh, target_edge: Any, click_pt: QVector3D) -> Tuple[bool, st
         if hasattr(mesh, "prune_orphan_vertices"):
             mesh.prune_orphan_vertices()
         mark_mesh_modified(mesh)
-        return True, "Se recortó todo el segmento de línea libre."
+        return True, tr("msg_trim_free_line")
 
     s_pt, e_pt, t_start, t_end = find_trim_span(target_edge, intersections, click_pt)
 
@@ -711,7 +926,7 @@ def op_quick_trim(mesh, target_edge: Any, click_pt: QVector3D) -> Tuple[bool, st
         mesh.prune_orphan_vertices()
 
     mark_mesh_modified(mesh)
-    return True, "Segmento de línea recortado entre intersecciones."
+    return True, tr("msg_trim_between")
 
 
 def op_boundary_trim(
@@ -726,11 +941,11 @@ def op_boundary_trim(
     vT = pT1 - pT0
     LT = vT.length()
     if LT < 1e-6:
-        return False, "La línea de destino tiene longitud cero."
+        return False, tr("err_target_zero")
 
     ok, int_pt, msg, (t, u) = intersect_lines_3d_detailed(pT0, vT, pC0, pC1 - pC0)
     if not ok or int_pt is None:
-        return False, "La línea de destino no corta con el límite de corte."
+        return False, tr("err_target_no_hit")
 
     dT = vT / LT
     t_click = QVector3D.dotProduct(click_pt - pT0, dT)
@@ -766,7 +981,7 @@ def op_boundary_trim(
         mesh.prune_orphan_vertices()
 
     mark_mesh_modified(mesh)
-    return True, "Línea recortada contra el límite de corte."
+    return True, tr("msg_boundary_trimmed")
 
 
 def op_fillet(
@@ -791,8 +1006,8 @@ def op_fillet(
     )
 
     if is_sharp:
-        return True, "Extendida/recortada hasta esquina viva (R=0)."
-    return True, f"Empalme creado (R={radius:.3f} m, {len(arc_points)-1} segmentos)."
+        return True, tr("msg_extended_sharp")
+    return True, tr("msg_fillet_created", r=radius, segs=len(arc_points) - 1)
 
 
 def op_chamfer(
@@ -814,7 +1029,7 @@ def op_chamfer(
         mesh, edge1, edge2, V, T1, T2, pA_far, pB_far, arc_points=[], is_sharp=False
     )
 
-    return True, f"Chaflán creado (D1={dist1:.3f} m, D2={dist2:.3f} m)."
+    return True, tr("msg_chamfer_created", d1=dist1, d2=dist2)
 
 
 # =============================================================================
@@ -846,7 +1061,7 @@ class CADTrimTool(Tool):
     def __init__(self, mode: str = "quick"):
         super().__init__()
         self.mode = mode
-        self.name = "CAD Recorte"
+        self.name = "CAD Trim"
         self.cutter_edge = None
         self.hover_edge = None
         self.hover_pos = None
@@ -866,9 +1081,9 @@ class CADTrimTool(Tool):
             pass
 
         if self.mode == "boundary":
-            viewport.flash_status("Recorte por límite: haz clic primero en la línea de CORTE. (Esc = cancelar)", 6000)
+            viewport.flash_status(tr("trim_start_boundary"), 6000)
         else:
-            viewport.flash_status("Recorte rápido: haz clic en cualquier segmento de línea para borrarlo entre intersecciones. (Esc = cancelar)", 6000)
+            viewport.flash_status(tr("trim_start_quick"), 6000)
         viewport.update()
 
     def on_deactivate(self, viewport) -> None:
@@ -888,7 +1103,7 @@ class CADTrimTool(Tool):
             viewport.scene.clear_selection()
         except Exception:
             pass
-        viewport.flash_status("Recorte cancelado.", 2000)
+        viewport.flash_status(tr("trim_cancelled"), 2000)
         viewport.set_active_tool(None)
         viewport.update()
 
@@ -940,7 +1155,7 @@ class CADTrimTool(Tool):
                     vp.scene.select([edge], mode="replace")
                 except Exception:
                     pass
-                vp.flash_status("¡Línea de corte seleccionada! Ahora haz clic en las líneas que la cruzan, en el lado que quieres recortar.", 6000)
+                vp.flash_status(tr("trim_cutter_selected"), 6000)
                 vp.update()
             else:
                 # 2. Trim Target against Cutter
@@ -953,7 +1168,7 @@ class CADTrimTool(Tool):
                     res["msg"] = msg
 
                 execute_transaction(vp, mutate)
-                vp.flash_status(f"{res.get('msg', 'Recortado.')} (Haz clic en la siguiente línea o Esc para salir)", 5000)
+                vp.flash_status(tr("status_next_line", msg=res.get("msg", tr("msg_trimmed"))), 5000)
                 vp.update()
 
         else:
@@ -965,7 +1180,7 @@ class CADTrimTool(Tool):
 
             execute_transaction(vp, mutate)
             self.trim_span = None
-            vp.flash_status(f"{res.get('msg', 'Recortado.')} (Listo para el siguiente segmento, o Esc para salir)", 5000)
+            vp.flash_status(tr("status_next_segment", msg=res.get("msg", tr("msg_trimmed"))), 5000)
             vp.update()
 
 
@@ -973,11 +1188,11 @@ class CADFilletTool(Tool):
     """Interactive Fillet tool with dynamic VCB radius entry."""
     uses_snap = True
     box_select = False
-    vcb_label = "Radio"
+    vcb_label = tr("vcb_radius")
 
     def __init__(self):
         super().__init__()
-        self.name = "CAD Empalme"
+        self.name = "CAD Fillet"
         self.radius = _SETTINGS.get("fillet_radius", 0.50)
         self.edge1 = None
         self.click1 = None
@@ -999,8 +1214,8 @@ class CADFilletTool(Tool):
         except Exception:
             pass
 
-        r_str = f"{self.radius:.3f} m" if self.radius > 0 else "0 (esquina viva)"
-        viewport.flash_status(f"CAD Empalme [R = {r_str}]: haz clic en la línea 1. (Escribe el radio + Enter para cambiarlo)", 6000)
+        r_str = tr("radius_value", v=self.radius) if self.radius > 0 else tr("radius_sharp")
+        viewport.flash_status(tr("fillet_start", r=r_str), 6000)
         viewport.update()
 
     def on_deactivate(self, viewport) -> None:
@@ -1020,7 +1235,7 @@ class CADFilletTool(Tool):
             viewport.scene.clear_selection()
         except Exception:
             pass
-        viewport.flash_status("Empalme cancelado.", 2000)
+        viewport.flash_status(tr("fillet_cancelled"), 2000)
         viewport.set_active_tool(None)
         viewport.update()
 
@@ -1033,12 +1248,12 @@ class CADFilletTool(Tool):
     def on_value(self, viewport, value: float) -> bool:
         """Called when user types a radius into IngeTrazo's VCB box and presses Enter."""
         if value < 0:
-            viewport.flash_status("El radio no puede ser negativo.", 3000)
+            viewport.flash_status(tr("radius_negative"), 3000)
             return False
         self.radius = value
         _SETTINGS["fillet_radius"] = value
-        r_str = f"{value:.3f} m" if value > 0 else "0 (esquina viva)"
-        viewport.flash_status(f"Radio de empalme actualizado a {r_str}", 4000)
+        r_str = tr("radius_value", v=value) if value > 0 else tr("radius_sharp")
+        viewport.flash_status(tr("radius_updated", r=r_str), 4000)
         self._calculate_preview()
         viewport.update()
         return True
@@ -1081,7 +1296,7 @@ class CADFilletTool(Tool):
                 vp.scene.select([edge], mode="replace")
             except Exception:
                 pass
-            vp.flash_status(f"¡Línea 1 seleccionada! Ahora haz clic en la línea 2 para crear el empalme (R={self.radius:.3f} m).", 6000)
+            vp.flash_status(tr("fillet_line1_selected", r=self.radius), 6000)
             vp.update()
         else:
             # Pick Line 2 -> Execute Fillet!
@@ -1105,7 +1320,7 @@ class CADFilletTool(Tool):
                 pass
 
             self.reset()
-            vp.flash_status(f"{res.get('msg', 'Completado.')} (Haz clic en la siguiente línea 1, o Esc para salir)", 5000)
+            vp.flash_status(tr("status_next_line1", msg=res.get("msg", tr("msg_completed"))), 5000)
             vp.update()
 
     def _calculate_preview(self) -> None:
@@ -1137,11 +1352,11 @@ class CADChamferTool(Tool):
     """Interactive Chamfer tool with dynamic VCB distance entry."""
     uses_snap = True
     box_select = False
-    vcb_label = "Distancia"
+    vcb_label = tr("vcb_distance")
 
     def __init__(self):
         super().__init__()
-        self.name = "CAD Chaflán"
+        self.name = "CAD Chamfer"
         self.dist1 = _SETTINGS.get("chamfer_dist1", 0.30)
         self.dist2 = _SETTINGS.get("chamfer_dist2", 0.30)
         self.edge1 = None
@@ -1163,7 +1378,7 @@ class CADChamferTool(Tool):
         except Exception:
             pass
 
-        viewport.flash_status(f"CAD Chaflán [D = {self.dist1:.3f} m]: haz clic en la línea 1. (Escribe la distancia + Enter, Esc = salir)", 6000)
+        viewport.flash_status(tr("chamfer_start", d=self.dist1), 6000)
         viewport.update()
 
     def on_deactivate(self, viewport) -> None:
@@ -1183,7 +1398,7 @@ class CADChamferTool(Tool):
             viewport.scene.clear_selection()
         except Exception:
             pass
-        viewport.flash_status("Chaflán cancelado.", 2000)
+        viewport.flash_status(tr("chamfer_cancelled"), 2000)
         viewport.set_active_tool(None)
         viewport.update()
 
@@ -1195,13 +1410,13 @@ class CADChamferTool(Tool):
 
     def on_value(self, viewport, value: float) -> bool:
         if value <= 0:
-            viewport.flash_status("La distancia debe ser mayor que cero.", 3000)
+            viewport.flash_status(tr("distance_positive"), 3000)
             return False
         self.dist1 = value
         self.dist2 = value
         _SETTINGS["chamfer_dist1"] = value
         _SETTINGS["chamfer_dist2"] = value
-        viewport.flash_status(f"Distancia de chaflán establecida en {value:.3f} m", 4000)
+        viewport.flash_status(tr("distance_updated", d=value), 4000)
         self._calculate_preview()
         viewport.update()
         return True
@@ -1242,7 +1457,7 @@ class CADChamferTool(Tool):
                 vp.scene.select([edge], mode="replace")
             except Exception:
                 pass
-            vp.flash_status(f"¡Línea 1 seleccionada! Ahora haz clic en la línea 2 para aplicar el chaflán (D={self.dist1:.3f} m).", 6000)
+            vp.flash_status(tr("chamfer_line1_selected", d=self.dist1), 6000)
             vp.update()
         else:
             if edge == self.edge1:
@@ -1264,7 +1479,7 @@ class CADChamferTool(Tool):
                 pass
 
             self.reset()
-            vp.flash_status(f"{res.get('msg', 'Completado.')} (Haz clic en la siguiente línea 1, o Esc para salir)", 5000)
+            vp.flash_status(tr("status_next_line1", msg=res.get("msg", tr("msg_completed"))), 5000)
             vp.update()
 
     def _calculate_preview(self) -> None:
@@ -1360,18 +1575,18 @@ class TrimFilletSettingsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("CAD Trim & Fillet — Configuración")
+        self.setWindowTitle(tr("dlg_title"))
         self.setMinimumWidth(340)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
         # Fillet Group
-        grp_fillet = QGroupBox("Configuración de empalme", self)
+        grp_fillet = QGroupBox(tr("dlg_fillet_group"), self)
         f_layout = QVBoxLayout(grp_fillet)
 
         row_r = QHBoxLayout()
-        row_r.addWidget(QLabel("Radio predeterminado (m):"))
+        row_r.addWidget(QLabel(tr("dlg_default_radius")))
         self.spin_radius = QDoubleSpinBox()
         self.spin_radius.setRange(0.0, 1000.0)
         self.spin_radius.setSingleStep(0.1)
@@ -1381,7 +1596,7 @@ class TrimFilletSettingsDialog(QDialog):
         f_layout.addLayout(row_r)
 
         row_s = QHBoxLayout()
-        row_s.addWidget(QLabel("Segmentos del arco:"))
+        row_s.addWidget(QLabel(tr("dlg_arc_segments")))
         self.spin_segs = QSpinBox()
         self.spin_segs.setRange(4, 64)
         self.spin_segs.setSingleStep(2)
@@ -1392,11 +1607,11 @@ class TrimFilletSettingsDialog(QDialog):
         layout.addWidget(grp_fillet)
 
         # Chamfer Group
-        grp_chamfer = QGroupBox("Configuración de chaflán", self)
+        grp_chamfer = QGroupBox(tr("dlg_chamfer_group"), self)
         c_layout = QVBoxLayout(grp_chamfer)
 
         row_c1 = QHBoxLayout()
-        row_c1.addWidget(QLabel("Distancia 1 (m):"))
+        row_c1.addWidget(QLabel(tr("dlg_distance1")))
         self.spin_c1 = QDoubleSpinBox()
         self.spin_c1.setRange(0.001, 1000.0)
         self.spin_c1.setSingleStep(0.05)
@@ -1406,7 +1621,7 @@ class TrimFilletSettingsDialog(QDialog):
         c_layout.addLayout(row_c1)
 
         row_c2 = QHBoxLayout()
-        row_c2.addWidget(QLabel("Distancia 2 (m):"))
+        row_c2.addWidget(QLabel(tr("dlg_distance2")))
         self.spin_c2 = QDoubleSpinBox()
         self.spin_c2.setRange(0.001, 1000.0)
         self.spin_c2.setSingleStep(0.05)
@@ -1420,9 +1635,9 @@ class TrimFilletSettingsDialog(QDialog):
         # Buttons
         btn_box = QHBoxLayout()
         btn_box.addStretch()
-        btn_ok = QPushButton("Guardar configuración", self)
+        btn_ok = QPushButton(tr("dlg_save"), self)
         btn_ok.clicked.connect(self._save_and_close)
-        btn_cancel = QPushButton("Cancelar", self)
+        btn_cancel = QPushButton(tr("dlg_cancel"), self)
         btn_cancel.clicked.connect(self.reject)
         btn_box.addWidget(btn_ok)
         btn_box.addWidget(btn_cancel)
@@ -1548,8 +1763,8 @@ def activate_trim_tool(app, mode: str = "quick") -> None:
     vp = app.viewport
     tool = CADTrimTool(mode)
     vp.set_active_tool(tool)
-    mode_label = "Recorte rápido" if mode == "quick" else "Recorte por límite"
-    _sync_toolbar_selection(app, f"CAD {mode_label}")
+    label_key = "tool_label_trim_quick" if mode == "quick" else "tool_label_trim_boundary"
+    _sync_toolbar_selection(app, tr(label_key))
 
 
 def activate_fillet_tool(app) -> None:
@@ -1557,7 +1772,7 @@ def activate_fillet_tool(app) -> None:
     vp = app.viewport
     tool = CADFilletTool()
     vp.set_active_tool(tool)
-    _sync_toolbar_selection(app, "CAD Empalme")
+    _sync_toolbar_selection(app, tr("tool_label_fillet"))
 
 
 def activate_chamfer_tool(app) -> None:
@@ -1565,7 +1780,7 @@ def activate_chamfer_tool(app) -> None:
     vp = app.viewport
     tool = CADChamferTool()
     vp.set_active_tool(tool)
-    _sync_toolbar_selection(app, "CAD Chaflán")
+    _sync_toolbar_selection(app, tr("tool_label_chamfer"))
 
 
 def open_settings_dialog(app) -> None:
@@ -1573,7 +1788,7 @@ def open_settings_dialog(app) -> None:
     win = getattr(app, "window", None) or getattr(app, "main_window", None)
     dlg = TrimFilletSettingsDialog(win)
     if dlg.exec():
-        app.viewport.flash_status("Configuración de CAD Trim & Fillet actualizada.", 3000)
+        app.viewport.flash_status(tr("settings_updated"), 3000)
 
 
 def _sync_toolbar_selection(app, label_name: str) -> None:
@@ -1583,7 +1798,7 @@ def _sync_toolbar_selection(app, label_name: str) -> None:
             action.setChecked(False)
         label = getattr(win, "_tool_label", None)
         if label is not None:
-            label.setText(f"Herramienta: {label_name}")
+            label.setText(tr("tool_label_prefix", name=label_name))
     app.viewport.setFocus()
 
 
@@ -1606,7 +1821,7 @@ def build_toolbar(app, win, actions_spec):
 
     for icon_key, title, tooltip, callback in actions_spec:
         action = QAction(draw_trim_fillet_icon(icon_key), title, tb)
-        action.setToolTip(f"<b>{title}</b><br>{tooltip}<br><i>Autor: {AUTHOR}</i><br><i>Traducción: {TRANSLATOR}</i>")
+        action.setToolTip(f"<b>{title}</b><br>{tooltip}{_credits_html()}")
         action.setStatusTip(f"{title} — {tooltip}")
         action.triggered.connect(lambda _checked=False, fn=callback: fn())
         tb.addAction(action)
@@ -1622,32 +1837,32 @@ def setup(app) -> None:
     actions_spec = [
         (
             "trim_quick",
-            "Recorte rápido",
-            "Haz clic en cualquier segmento de línea para borrarlo entre las intersecciones que lo delimitan.",
+            tr("act_quick_title"),
+            tr("act_quick_tip"),
             lambda: activate_trim_tool(app, "quick"),
         ),
         (
             "trim_boundary",
-            "Recorte por límite",
-            "Haz clic primero en el límite de corte y luego en las líneas que quieres recortar.",
+            tr("act_boundary_title"),
+            tr("act_boundary_tip"),
             lambda: activate_trim_tool(app, "boundary"),
         ),
         (
             "fillet",
-            "Arco de empalme",
-            "Crea un arco circular tangente que redondea la esquina (permite escribir el radio en el cuadro de medidas).",
+            tr("act_fillet_title"),
+            tr("act_fillet_tip"),
             lambda: activate_fillet_tool(app),
         ),
         (
             "chamfer",
-            "Chaflán",
-            "Crea un chaflán recto entre dos líneas (permite escribir la distancia en el cuadro de medidas).",
+            tr("act_chamfer_title"),
+            tr("act_chamfer_tip"),
             lambda: activate_chamfer_tool(app),
         ),
         (
             "settings",
-            "Configuración...",
-            "Configura el radio de empalme, los segmentos del arco y las distancias del chaflán.",
+            tr("act_settings_title"),
+            tr("act_settings_tip"),
             lambda: open_settings_dialog(app),
         ),
     ]
@@ -1662,10 +1877,11 @@ def setup(app) -> None:
             act.triggered.connect(lambda _c=False, fn=callback: fn())
 
         sub_menu.addSeparator()
-        info_act = sub_menu.addAction(f"Autor: {AUTHOR}")
+        info_act = sub_menu.addAction(tr("author_line", a=AUTHOR))
         info_act.setEnabled(False)
-        translator_act = sub_menu.addAction(f"Traducción al español: {TRANSLATOR}")
-        translator_act.setEnabled(False)
+        if current_language() == "es":
+            translator_act = sub_menu.addAction(tr("translator_line", t=TRANSLATOR))
+            translator_act.setEnabled(False)
     else:
         for icon_key, title, tooltip, callback in actions_spec:
             app.add_menu_action(f"CAD Trim & Fillet: {title}", callback, tip=tooltip)
@@ -1676,13 +1892,13 @@ def setup(app) -> None:
         title_act = menu.addAction(f"— CAD Trim & Fillet ({AUTHOR}) —")
         title_act.setEnabled(False)
 
-        act_qt = menu.addAction(draw_trim_fillet_icon("trim_quick"), "Recorte rápido")
+        act_qt = menu.addAction(draw_trim_fillet_icon("trim_quick"), tr("act_quick_title"))
         act_qt.triggered.connect(lambda _c=False: QTimer.singleShot(0, lambda: activate_trim_tool(app, "quick")))
 
-        act_f = menu.addAction(draw_trim_fillet_icon("fillet"), "Arco de empalme...")
+        act_f = menu.addAction(draw_trim_fillet_icon("fillet"), tr("act_fillet_title") + "...")
         act_f.triggered.connect(lambda _c=False: QTimer.singleShot(0, lambda: activate_fillet_tool(app)))
 
-        act_ch = menu.addAction(draw_trim_fillet_icon("chamfer"), "Chaflán...")
+        act_ch = menu.addAction(draw_trim_fillet_icon("chamfer"), tr("act_chamfer_title") + "...")
         act_ch.triggered.connect(lambda _c=False: QTimer.singleShot(0, lambda: activate_chamfer_tool(app)))
 
     app.add_context_menu(context_menu_hook)
@@ -1694,4 +1910,3 @@ def setup(app) -> None:
     win = getattr(app, "window", None) or getattr(app, "main_window", None)
     if win is not None:
         build_toolbar(app, win, actions_spec)
-     
