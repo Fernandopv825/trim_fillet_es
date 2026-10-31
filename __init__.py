@@ -20,7 +20,7 @@ Features:
   * High-DPI vector icons with automatic dark/light theme adaptation.
   * Dedicated settings dialog for radius, segments, and distances.
   * Full transactional undo/redo integration with IngeTrazo.
-  * Multi-language interface (English / Spanish), selected automatically.
+  * Multi-language interface (English / Spanish): automatic or chosen in the settings dialog.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import copy
 import math
 from typing import List, Tuple, Optional, Any, Dict
 
-from PySide6.QtCore import Qt, QPointF, QSize, QTimer, QLocale
+from PySide6.QtCore import Qt, QPointF, QSize, QTimer, QLocale, QSettings
 from PySide6.QtGui import (
     QVector3D,
     QColor,
@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QPushButton,
     QGroupBox,
+    QComboBox,
 )
 
 from tools.base import Tool
@@ -73,6 +74,7 @@ _SETTINGS = {
     "chamfer_dist1": 0.30,     # default 0.30 meters
     "chamfer_dist2": 0.30,     # default 0.30 meters
     "trim_tolerance": 0.05,    # 50 mm intersection tolerance
+    "language": "auto",        # "auto", "en" or "es" (chosen in the settings dialog)
 }
 
 _GLOBAL_APP = None
@@ -82,9 +84,11 @@ _ACTIVE_TOOL = None
 # =============================================================================
 # 0. MULTI-LANGUAGE SUPPORT (ENGLISH / SPANISH)
 # =============================================================================
-# The interface language is chosen automatically: if IngeTrazo (or the system)
-# uses Spanish, the interface is shown in Spanish; otherwise in English.
-# To force a language, set FORCE_LANGUAGE = "en" or FORCE_LANGUAGE = "es".
+# The user can choose the language in the settings dialog (Automatic / English /
+# Spanish). With "Automatic", if IngeTrazo (or the system) uses Spanish the
+# interface is shown in Spanish; otherwise in English. The choice is saved
+# between sessions. To force a language from the code, set
+# FORCE_LANGUAGE = "en" or FORCE_LANGUAGE = "es" (it overrides the dialog).
 # To add another language, copy the "en" block inside _TEXTS and translate it.
 
 FORCE_LANGUAGE = None  # None = automatic, "en" = English, "es" = Spanish
@@ -145,6 +149,10 @@ _TEXTS: Dict[str, Dict[str, str]] = {
         "dlg_distance2": "Distance 2 (m):",
         "dlg_save": "Save Settings",
         "dlg_cancel": "Cancel",
+        "dlg_language_group": "Language",
+        "dlg_language_label": "Interface language:",
+        "dlg_lang_auto": "Automatic",
+        "dlg_language_note": "Restart IngeTrazo to apply the language to menus and toolbar.",
         "settings_updated": "CAD Trim & Fillet settings updated.",
         # --- toolbar / menus
         "tool_label_prefix": "Tool: {name}",
@@ -220,6 +228,10 @@ _TEXTS: Dict[str, Dict[str, str]] = {
         "dlg_distance2": "Distancia 2 (m):",
         "dlg_save": "Guardar configuración",
         "dlg_cancel": "Cancelar",
+        "dlg_language_group": "Idioma",
+        "dlg_language_label": "Idioma de la interfaz:",
+        "dlg_lang_auto": "Automático",
+        "dlg_language_note": "Reinicia IngeTrazo para aplicar el idioma en los menús y la barra de herramientas.",
         "settings_updated": "Configuración de CAD Trim & Fillet actualizada.",
         # --- toolbar / menus
         "tool_label_prefix": "Herramienta: {name}",
@@ -247,6 +259,10 @@ def current_language() -> str:
     """Return "es" or "en" depending on FORCE_LANGUAGE, IngeTrazo or the system."""
     if FORCE_LANGUAGE in ("en", "es"):
         return FORCE_LANGUAGE
+
+    chosen = _SETTINGS.get("language", "auto")
+    if chosen in ("en", "es"):
+        return chosen
 
     candidates: List[str] = []
     app = _GLOBAL_APP
@@ -291,6 +307,35 @@ def _credits_html() -> str:
     if current_language() == "es":
         html += "<br><i>" + tr("translator_line", t=TRANSLATOR) + "</i>"
     return html
+
+
+_SETTINGS_ORG = "IngeTrazo"
+_SETTINGS_APP = "cad_trim_fillet"
+
+
+def _load_saved_language() -> str:
+    """Read the language chosen in the settings dialog (kept between sessions)."""
+    try:
+        value = QSettings(_SETTINGS_ORG, _SETTINGS_APP).value("language", "auto")
+        if isinstance(value, str) and value in ("auto", "en", "es"):
+            return value
+    except Exception:
+        pass
+    return "auto"
+
+
+def save_language_preference(value: str) -> None:
+    """Remember the chosen language ("auto", "en" or "es")."""
+    if value not in ("auto", "en", "es"):
+        value = "auto"
+    _SETTINGS["language"] = value
+    try:
+        QSettings(_SETTINGS_ORG, _SETTINGS_APP).setValue("language", value)
+    except Exception:
+        pass
+
+
+_SETTINGS["language"] = _load_saved_language()
 
 
 # =============================================================================
@@ -1632,6 +1677,27 @@ class TrimFilletSettingsDialog(QDialog):
 
         layout.addWidget(grp_chamfer)
 
+        # Language Group
+        grp_lang = QGroupBox(tr("dlg_language_group"), self)
+        l_layout = QVBoxLayout(grp_lang)
+
+        row_l = QHBoxLayout()
+        row_l.addWidget(QLabel(tr("dlg_language_label")))
+        self.combo_lang = QComboBox()
+        self.combo_lang.addItem(tr("dlg_lang_auto"), "auto")
+        self.combo_lang.addItem("English", "en")
+        self.combo_lang.addItem("Español", "es")
+        idx = self.combo_lang.findData(_SETTINGS.get("language", "auto"))
+        self.combo_lang.setCurrentIndex(idx if idx >= 0 else 0)
+        row_l.addWidget(self.combo_lang)
+        l_layout.addLayout(row_l)
+
+        lang_note = QLabel(tr("dlg_language_note"))
+        lang_note.setWordWrap(True)
+        l_layout.addWidget(lang_note)
+
+        layout.addWidget(grp_lang)
+
         # Buttons
         btn_box = QHBoxLayout()
         btn_box.addStretch()
@@ -1648,6 +1714,7 @@ class TrimFilletSettingsDialog(QDialog):
         _SETTINGS["fillet_segments"] = self.spin_segs.value()
         _SETTINGS["chamfer_dist1"] = self.spin_c1.value()
         _SETTINGS["chamfer_dist2"] = self.spin_c2.value()
+        save_language_preference(self.combo_lang.currentData())
         self.accept()
 
 
@@ -1910,3 +1977,4 @@ def setup(app) -> None:
     win = getattr(app, "window", None) or getattr(app, "main_window", None)
     if win is not None:
         build_toolbar(app, win, actions_spec)
+     
