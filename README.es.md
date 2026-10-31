@@ -44,8 +44,9 @@ Traducción al español: **Fernando Felix**.
 - Accesos directos en el menú contextual de la vista, con clic derecho.
 
 ### 7. Interfaz multiidioma (inglés / español)
-- El idioma de la interfaz se elige automáticamente (español si IngeTrazo o el sistema usan español; inglés en los demás casos).
-- Para forzar un idioma, cambia `FORCE_LANGUAGE = "en"` o `FORCE_LANGUAGE = "es"` cerca del inicio de `__init__.py`.
+- Elige el idioma en el cuadro de configuración (**Automático / English / Español**). La elección se guarda entre sesiones; reinicia IngeTrazo para aplicarla a los menús y la barra de herramientas.
+- Con **Automático**, se usa español si IngeTrazo o el sistema usan español, e inglés en los demás casos.
+- Para forzar un idioma desde el código, cambia `FORCE_LANGUAGE = "en"` o `FORCE_LANGUAGE = "es"` cerca del inicio de `__init__.py`.
 - Para agregar otro idioma, copia el bloque `"en"` dentro de `_TEXTS` y tradúcelo.
 
 ---
